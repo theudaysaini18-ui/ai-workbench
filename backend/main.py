@@ -11,29 +11,42 @@ from fastapi.staticfiles import StaticFiles
 sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from schemas import (
+from backend.assistant_service import AssistantService
+from backend.logging_audit import get_recent_logs, inspect_network_connections
+from backend.orchestrator import Controller
+from backend.schemas import (
+    AssistantResponse,
     ChatRequest,
-    ChatResponse,
     Deliverable,
     RunTaskRequest,
     RunTaskResponse,
 )
-from model_router import call_ollama, classify_task, route_model
-from orchestrator import Controller
-from logging_audit import get_recent_logs, inspect_network_connections
+from backend.session_store import SessionStore
+
+from datetime import datetime
+from textwrap import wrap
+
+from fastapi import Body
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
+EXPORT_DIR = PROJECT_ROOT / "data" / "exports"
 
 app = FastAPI(
     title="Sovereign AI Workbench",
-    description="Local-only agentic AI workbench for confidential industrial tasks.",
+    description="Local-only agentic AI workbench for confidential work.",
 )
 
-# Mount custom HTML/CSS/JS at /static.
-# All files are served from this local project folder only.
 app.mount(
     "/static",
     StaticFiles(directory=str(FRONTEND_DIR)),
@@ -42,25 +55,22 @@ app.mount(
 
 controller = Controller()
 
-# Temporary in-memory mapping for this server session:
-# random file ID -> approved generated local file path.
+# Chat memory is intentionally in-memory for the MVP.
+session_store = SessionStore()
+assistant_service = AssistantService(session_store=session_store)
+
+# Current-session mapping from secure random ID -> locally generated file.
 DELIVERABLES: dict[str, Path] = {}
 
 
 def get_file_type(file_path: Path) -> str:
-    """Returns the file extension without the leading dot."""
-    suffix = file_path.suffix.lower().lstrip(".")
-    return suffix or "file"
+    """Return the extension without its leading dot."""
+    return file_path.suffix.lower().lstrip(".") or "file"
 
 
 @app.get("/", include_in_schema=False)
 def root():
-    """
-    Serve the custom local frontend dashboard.
-
-    Browser URL:
-    http://127.0.0.1:8000/
-    """
+    """Serve the local HTML/CSS/JavaScript frontend."""
     index_file = FRONTEND_DIR / "index.html"
 
     if not index_file.exists():
@@ -74,7 +84,7 @@ def root():
 
 @app.get("/health")
 def health():
-    """Returns local endpoint and visible network-monitor status."""
+    """Return local endpoints and visible network-monitor information."""
     network_status = inspect_network_connections()
     external_connections = network_status["external_connections"]
 
@@ -86,16 +96,13 @@ def health():
         "external_connections_detected": external_connections,
         "monitor_permission_limited": network_status["permission_limited"],
         "sandbox_network": "disabled (--network none)",
+        "active_chat_sessions": session_store.session_count(),
     }
 
 
 @app.get("/logs")
 def logs(limit: int = 20):
-    """
-    Returns recent audit records for the Sovereignty Monitor.
-
-    Limit is capped to prevent unnecessarily large local responses.
-    """
+    """Return recent local audit records for the Sovereignty Monitor."""
     safe_limit = max(1, min(limit, 100))
     entries = get_recent_logs(limit=safe_limit)
 
@@ -105,43 +112,43 @@ def logs(limit: int = 20):
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
-    """Handles one local chat turn through the local model router."""
-    task_type = classify_task(
-        user_input=req.message,
-        has_image=bool(req.image_path),
-    )
+@app.post("/chat", response_model=AssistantResponse)
+def chat(request: ChatRequest):
+    """
+    Normal local ChatGPT/Claude-style chat endpoint.
 
-    model = route_model(task_type)
+    Current version supports natural text conversation with session memory.
+    Attachment processing and automatic agent routing are added next.
+    """
+    return assistant_service.chat(request)
 
-    reply = call_ollama(
-        model=model,
-        prompt=req.message,
-        image_path=req.image_path,
-    )
 
-    return ChatResponse(
-        session_id=req.session_id,
-        reply=reply,
-        model_used=model,
-    )
+@app.post("/chat/clear")
+def clear_chat(session_id: str):
+    """Clear in-memory conversation history for one local chat session."""
+    session_store.clear_session(session_id)
+
+    return {
+        "status": "success",
+        "message": "Local conversation history cleared.",
+        "session_id": session_id,
+    }
 
 
 @app.post("/run_task", response_model=RunTaskResponse)
-def run_task(req: RunTaskRequest):
+def run_task(request: RunTaskRequest):
     """
-    Executes a task through the Controller.
+    Explicit transparent workflow endpoint retained for testing/demo use.
 
-    The Controller handles agent delegation:
-    - code_task: Coder Agent -> Docker sandbox
-    - vision_task: Vision Agent -> structured findings
-    - approval_note: Vision Agent -> RAG -> Document Agent -> DOCX
+    Supported:
+    - code_task
+    - vision_task
+    - approval_note
     """
     result = controller.run_task(
-        task_type=req.task_type,
-        input_files=req.input_files,
-        instructions=req.instructions,
+        task_type=request.task_type,
+        input_files=request.input_files,
+        instructions=request.instructions,
     )
 
     if result["status"] == "failed":
@@ -158,9 +165,6 @@ def run_task(req: RunTaskRequest):
     for file_path_string in result.get("deliverable_paths", []):
         file_path = Path(file_path_string).resolve()
 
-        # Only expose real files under the local uploads directory.
-        # This prevents a generated/incorrect agent response from exposing
-        # arbitrary files elsewhere on the host machine.
         try:
             file_path.relative_to(UPLOAD_DIR.resolve())
         except ValueError:
@@ -194,12 +198,7 @@ def run_task(req: RunTaskRequest):
 
 @app.post("/upload")
 def upload(file: UploadFile = File(...)):
-    """
-    Saves an uploaded input file to the local workspace only.
-
-    UUID prefixes avoid filename collisions. os.path.basename removes
-    unwanted directory components from a client-supplied filename.
-    """
+    """Store an uploaded file only under the local data/uploads folder."""
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     file_id = str(uuid.uuid4())
@@ -217,12 +216,85 @@ def upload(file: UploadFile = File(...)):
     }
 
 
+@app.post("/export/pdf")
+def export_pdf(payload: dict = Body(...)):
+    """
+    Create a PDF locally from an assistant response.
+
+    The browser sends only the response text. The PDF is generated and stored
+    locally under data/exports, then returned through FileResponse.
+    """
+    answer = str(payload.get("answer", "")).strip()
+    title = str(payload.get("title", "Sovereign AI Workbench Response")).strip()
+
+    if not answer:
+        raise HTTPException(
+            status_code=400,
+            detail="No response text was provided for PDF export.",
+        )
+
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    export_filename = f"sovereign_ai_response_{timestamp}.pdf"
+    export_path = EXPORT_DIR / export_filename
+
+    styles = getSampleStyleSheet()
+    title_style = styles["Title"]
+    body_style = styles["BodyText"]
+
+    body_style.leading = 16
+    body_style.spaceAfter = 7
+
+    document = SimpleDocTemplate(
+        str(export_path),
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+    )
+
+    story = [
+        Paragraph(title, title_style),
+        Spacer(1, 8 * mm),
+    ]
+
+    for line in answer.splitlines():
+        cleaned_line = line.strip()
+
+        if not cleaned_line:
+            story.append(Spacer(1, 3 * mm))
+            continue
+
+        # Lightweight Markdown cleanup for a readable PDF.
+        if cleaned_line.startswith("#"):
+            cleaned_line = cleaned_line.lstrip("#").strip()
+
+        if cleaned_line.startswith("- "):
+            cleaned_line = "• " + cleaned_line[2:]
+
+        safe_line = cleaned_line.replace("&", "&amp;")
+        safe_line = safe_line.replace("<", "&lt;")
+        safe_line = safe_line.replace(">", "&gt;")
+
+        story.append(Paragraph(safe_line, body_style))
+
+    document.build(story)
+
+    return FileResponse(
+        path=str(export_path),
+        filename=export_filename,
+        media_type="application/pdf",
+    )
+
+
 @app.get("/download/{file_id}")
 def download(file_id: str):
     """
-    Downloads one known local deliverable from the current server session.
+    Download a known generated local artifact from the current server session.
 
-    The endpoint never accepts a raw server file path from the browser.
+    Browser clients never provide raw file paths.
     """
     file_path = DELIVERABLES.get(file_id)
 

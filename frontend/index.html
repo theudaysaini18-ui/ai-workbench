@@ -1,317 +1,485 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-    <title>Sovereign AI Workbench</title>
-
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+  <title>Sovereign AI Workbench</title>
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 
 <body>
-    <div class="app-shell">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <a class="brand" href="/" aria-label="Sovereign AI Workbench home">
+          <div class="brand-mark">
+            <span>✦</span>
+          </div>
 
-        <!-- Top application header -->
-        <header class="topbar">
-            <div class="brand">
-                <div class="brand-icon">🛡</div>
+          <div class="brand-copy">
+            <strong>Sovereign AI</strong>
+            <span>Private workbench</span>
+          </div>
+        </a>
 
-                <div>
-                    <h1>Sovereign AI Workbench</h1>
-                    <p>On-Premise Agentic AI for Confidential Industrial Work</p>
-                </div>
-            </div>
+        <button id="new-chat-button" class="new-chat-button" type="button">
+          <span class="new-chat-icon">＋</span>
+          <span>New chat</span>
+          <kbd>⌘ K</kbd>
+        </button>
 
-            <div class="airgap-badge">
-                <span class="status-dot"></span>
-                LOCAL-ONLY / AIR-GAPPED READY
-            </div>
-        </header>
+        <nav class="sidebar-nav" aria-label="Workspace navigation">
+          <button
+            id="chats-button"
+            class="nav-item active"
+            type="button"
+          >
+            <span class="nav-icon">◌</span>
+            <span>Chats</span>
+          </button>
 
-        <main class="dashboard-grid">
+          <button
+            id="uploads-button"
+            class="nav-item"
+            type="button"
+          >
+            <span class="nav-icon">▣</span>
+            <span>Uploads</span>
+          </button>
 
-            <!-- Left: Task selection -->
-            <aside class="sidebar task-sidebar">
-                <div class="panel-heading">
-                    <p class="eyebrow">WORKFLOWS</p>
-                    <h2>Task Templates</h2>
-                </div>
+          <button
+            id="logs-button"
+            class="nav-item"
+            type="button"
+          >
+            <span class="nav-icon">◷</span>
+            <span>Activity logs</span>
+          </button>
+        </nav>
 
-                <button
-                    class="task-card active"
-                    data-task="approval_note"
-                    type="button"
-                >
-                    <span class="task-icon">📄</span>
+        <div class="sidebar-section-heading">
+          <span>RECENT</span>
+          <button
+            id="clear-recent-button"
+            type="button"
+            title="Clear recent chat list"
+            aria-label="Clear recent chat list"
+          >
+            ×
+          </button>
+        </div>
 
-                    <span class="task-copy">
-                        <strong>Approval Note</strong>
-                        <small>Scan → SOP check → DOCX</small>
-                    </span>
-                </button>
+        <div id="recent-chats-list" class="recent-chats-list">
+          <p class="recent-empty">Your recent chats will appear here.</p>
+        </div>
+      </div>
 
-                <button
-                    class="task-card"
-                    data-task="code_task"
-                    type="button"
-                >
-                    <span class="task-icon">⌘</span>
+      <div class="sidebar-bottom">
+        <button
+          id="privacy-sidebar-button"
+          class="privacy-card"
+          type="button"
+          aria-expanded="false"
+        >
+          <span class="privacy-card-icon">◈</span>
+          <span class="privacy-card-copy">
+            <strong>Private by design</strong>
+            <small>Processing stays local</small>
+          </span>
+          <span class="privacy-card-arrow">›</span>
+        </button>
+      </div>
+    </aside>
 
-                    <span class="task-copy">
-                        <strong>Code Sandbox</strong>
-                        <small>Generate → Execute → Verify</small>
-                    </span>
-                </button>
+    <main class="main-workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="workspace-icon">✦</div>
 
-                <button
-                    class="task-card"
-                    data-task="vision_task"
-                    type="button"
-                >
-                    <span class="task-icon">◉</span>
+          <div>
+            <h1>Sovereign AI Workbench</h1>
+            <p>Local multimodal assistant for confidential work</p>
+          </div>
+        </div>
 
-                    <span class="task-copy">
-                        <strong>Vision Analysis</strong>
-                        <small>Image → Structured findings</small>
-                    </span>
-                </button>
+        <div class="topbar-actions">
+          <button
+            id="privacy-button"
+            class="local-only-pill"
+            type="button"
+            aria-expanded="false"
+          >
+            <span class="pulse-dot"></span>
+            Local only
+          </button>
 
-                <div class="sidebar-note">
-                    <span>🔒</span>
-                    <p>
-                        Files and model prompts remain on this workstation.
-                    </p>
-                </div>
-            </aside>
+          <button
+            id="topbar-logs-button"
+            class="topbar-icon-button"
+            type="button"
+            title="View activity logs"
+            aria-label="View activity logs"
+          >
+            ◷
+          </button>
+        </div>
+      </header>
 
-            <!-- Center: Task workspace -->
-            <section class="workspace panel">
-                <div class="workspace-heading">
-                    <div>
-                        <p class="eyebrow" id="task-eyebrow">
-                            MULTI-AGENT WORKFLOW
-                        </p>
+      <section id="privacy-panel" class="privacy-panel hidden">
+        <div class="privacy-panel-icon">◈</div>
 
-                        <h2 id="task-title">
-                            Draft Approval Note from Scanned Report
-                        </h2>
+        <div>
+          <strong>Your work stays on this machine</strong>
+          <p>
+            Files are stored and processed locally. The workbench uses local
+            models and retains an auditable task trace for each response.
+          </p>
+        </div>
 
-                        <p id="task-description">
-                            Upload an inspection report. Vision and Document
-                            agents will extract findings, consult local SOPs,
-                            and generate a formal Word approval note.
-                        </p>
-                    </div>
+        <button
+          id="close-privacy-panel"
+          type="button"
+          aria-label="Close privacy information"
+        >
+          ×
+        </button>
+      </section>
 
-                    <div class="model-route" id="model-route">
-                        <span>ROUTE</span>
-                        <strong>Vision → RAG → Document</strong>
-                    </div>
-                </div>
+      <section
+        id="chat-messages"
+        class="chat-messages"
+        aria-live="polite"
+      >
+        <article class="hero-empty-state">
+          <div class="hero-orb">
+            <span>✦</span>
+          </div>
 
-                <div class="upload-section" id="upload-section">
-                    <label class="upload-box" for="file-input">
-                        <input
-                            id="file-input"
-                            type="file"
-                            accept=".jpg,.jpeg,.png"
-                        >
+          <p class="eyebrow">SOVEREIGN INTELLIGENCE</p>
 
-                        <span class="upload-icon">⇧</span>
-                        <strong>Upload Inspection Image</strong>
-                        <small>
-                            JPG or PNG · Stored only in local workspace
-                        </small>
-                    </label>
+          <h2>How can I help you today?</h2>
 
-                    <div class="file-preview hidden" id="file-preview">
-                        <img
-                            id="preview-image"
-                            src=""
-                            alt="Selected inspection report preview"
-                        >
+          <p class="hero-description">
+            Ask a question, upload a document, analyze an image, or write
+            code. Your request is handled using local AI models.
+          </p>
 
-                        <div class="preview-meta">
-                            <strong id="selected-file-name">
-                                No file selected
-                            </strong>
+          <div class="starter-grid">
+            <button
+              class="starter-card"
+              type="button"
+              data-prompt="Explain the benefits of local AI for confidential work in three concise bullet points."
+            >
+              <span class="starter-icon icon-blue">◈</span>
+              <span class="starter-copy">
+                <strong>Explore private AI</strong>
+                <small>Understand local-first intelligence</small>
+              </span>
+              <span class="starter-arrow">→</span>
+            </button>
 
-                            <span id="selected-file-size"></span>
+            <button
+              class="starter-card"
+              type="button"
+              data-prompt="Summarize the attached document in three concise bullet points. Do not add facts."
+            >
+              <span class="starter-icon icon-violet">▤</span>
+              <span class="starter-copy">
+                <strong>Analyze a document</strong>
+                <small>Upload a report, PDF, DOCX, or sheet</small>
+              </span>
+              <span class="starter-arrow">→</span>
+            </button>
 
-                            <button
-                                id="remove-file-button"
-                                class="text-button"
-                                type="button"
-                            >
-                                Remove
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            <button
+              class="starter-card"
+              type="button"
+              data-prompt="Extract all visible text from the attached image. Do not add facts."
+            >
+              <span class="starter-icon icon-amber">◫</span>
+              <span class="starter-copy">
+                <strong>Understand an image</strong>
+                <small>Read screenshots, photos, and notes</small>
+              </span>
+              <span class="starter-arrow">→</span>
+            </button>
 
-                <div class="instruction-section">
-                    <label for="instructions">Task Instructions</label>
+            <button
+              class="starter-card"
+              type="button"
+              data-prompt="Write a Python program to generate the first 10 Fibonacci numbers."
+            >
+              <span class="starter-icon icon-green">&lt;/&gt;</span>
+              <span class="starter-copy">
+                <strong>Write code</strong>
+                <small>Generate, explain, or debug code</small>
+              </span>
+              <span class="starter-arrow">→</span>
+            </button>
+          </div>
 
-                    <textarea
-                        id="instructions"
-                        rows="6"
-                    >Prepare an approval note for this industrial inspection report. Identify non-conformities and check whether escalation is required according to the local SOP.</textarea>
-                </div>
+          <div class="hero-features">
+            <span>◈ Local models</span>
+            <span>◌ File-aware chat</span>
+            <span>◷ Auditable activity</span>
+          </div>
+        </article>
+      </section>
 
-                <div class="action-row">
-                    <div class="local-note">
-                        <span>🛡</span>
-                        <span>
-                            Execution uses local models and a network-disabled sandbox.
-                        </span>
-                    </div>
+      <section class="composer-area">
+        <div
+          id="attachment-list"
+          class="attachment-list"
+          aria-live="polite"
+        ></div>
 
-                    <button
-                        id="run-task-button"
-                        class="primary-button"
-                        type="button"
-                    >
-                        <span>Run Local Agent Workflow</span>
-                        <span class="button-arrow">→</span>
-                    </button>
-                </div>
+        <form id="chat-form" class="composer">
+          <input
+            id="file-input"
+            type="file"
+            hidden
+            multiple
+            accept=".txt,.md,.pdf,.docx,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.gif"
+          />
 
-                <!-- Hidden until a workflow starts -->
-                <section class="execution-section hidden" id="execution-section">
-                    <div class="section-title-row">
-                        <div>
-                            <p class="eyebrow">LIVE EXECUTION</p>
-                            <h3>Agent Workflow Trace</h3>
-                        </div>
+          <button
+            id="attach-button"
+            class="attach-button"
+            type="button"
+            title="Attach a local file"
+            aria-label="Attach a local file"
+          >
+            <span>＋</span>
+          </button>
 
-                        <span class="running-badge" id="workflow-status">
-                            READY
-                        </span>
-                    </div>
+          <textarea
+            id="message-input"
+            rows="1"
+            placeholder="Message Sovereign AI…"
+            aria-label="Message"
+          ></textarea>
 
-                    <div class="workflow-timeline" id="workflow-timeline">
-                        <!-- app.js renders workflow steps here -->
-                    </div>
-                </section>
+          <button
+            id="send-button"
+            class="send-button"
+            type="submit"
+            title="Send message"
+            aria-label="Send message"
+          >
+            <span>↑</span>
+          </button>
+        </form>
 
-                <!-- Hidden until backend returns output -->
-                <section class="results-section hidden" id="results-section">
-                    <div class="section-title-row">
-                        <div>
-                            <p class="eyebrow">OUTPUT</p>
-                            <h3>Task Result</h3>
-                        </div>
+        <div class="composer-footer">
+          <span>Responses may be imperfect. Review important information.</span>
+          <span>Files remain on this device.</span>
+        </div>
+      </section>
+    </main>
+  </div>
 
-                        <span class="success-badge" id="result-status">
-                            COMPLETED
-                        </span>
-                    </div>
+  <div
+    id="logs-modal"
+    class="modal-backdrop hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="logs-title"
+  >
+    <section class="logs-modal">
+      <header class="logs-header">
+        <div class="logs-heading">
+          <div class="logs-heading-icon">◷</div>
 
-                    <div class="result-summary" id="result-summary">
-                        <!-- app.js renders models and tools here -->
-                    </div>
+          <div>
+            <p class="eyebrow">LOCAL AUDIT TRAIL</p>
+            <h2 id="logs-title">Activity logs</h2>
+            <p>
+              Review tasks, local models, tools, and sovereignty status.
+            </p>
+          </div>
+        </div>
 
-                    <div class="deliverables-container" id="deliverables-container">
-                        <!-- app.js renders downloadable output files here -->
-                    </div>
+        <button
+          id="close-logs-button"
+          class="modal-close-button"
+          type="button"
+          aria-label="Close activity logs"
+        >
+          ×
+        </button>
+      </header>
 
-                    <details class="json-details">
-                        <summary>View complete agent response</summary>
-                        <pre id="raw-result-json"></pre>
-                    </details>
-                </section>
-            </section>
+      <div class="logs-toolbar">
+        <div id="logs-status" class="logs-status">
+          Loading local activity…
+        </div>
 
-            <!-- Right: Sovereignty audit panel -->
-            <aside class="sidebar monitor-sidebar">
-                <div class="panel-heading">
-                    <p class="eyebrow">SECURITY & AUDIT</p>
-                    <h2>Sovereignty Monitor</h2>
-                </div>
+        <button
+          id="refresh-logs-button"
+          class="refresh-logs-button"
+          type="button"
+        >
+          ↻ Refresh
+        </button>
+      </div>
 
-                <div class="security-status">
-                    <div class="security-row">
-                        <span class="security-icon success">●</span>
+      <div id="logs-list" class="logs-list"></div>
+    </section>
+  </div>
 
-                        <div>
-                            <strong>Local FastAPI</strong>
-                            <small id="fastapi-status">
-                                Checking localhost...
-                            </small>
-                        </div>
-                    </div>
+  <div
+    id="uploads-modal"
+    class="modal-backdrop hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="uploads-title"
+  >
+    <section class="uploads-modal">
+      <header class="uploads-header">
+        <div class="uploads-heading">
+          <div class="uploads-heading-icon">▣</div>
 
-                    <div class="security-row">
-                        <span class="security-icon success">●</span>
+          <div>
+            <p class="eyebrow">LOCAL WORKSPACE</p>
+            <h2 id="uploads-title">Upload a file</h2>
+            <p>
+              Choose a confidential local file to use in your next message.
+            </p>
+          </div>
+        </div>
 
-                        <div>
-                            <strong>Local Ollama</strong>
-                            <small id="ollama-status">
-                                127.0.0.1:11434
-                            </small>
-                        </div>
-                    </div>
+        <button
+          id="close-uploads-button"
+          class="modal-close-button"
+          type="button"
+          aria-label="Close uploads"
+        >
+          ×
+        </button>
+      </header>
 
-                    <div class="security-row">
-                        <span class="security-icon success">●</span>
+      <div class="uploads-content">
+        <button
+          id="large-upload-button"
+          class="large-upload-button"
+          type="button"
+        >
+          <span class="large-upload-icon">↑</span>
+          <strong>Select files from this device</strong>
+          <small>
+            TXT, MD, PDF, DOCX, CSV, XLSX, PNG, JPG, JPEG, WEBP, GIF
+          </small>
+        </button>
 
-                        <div>
-                            <strong>Sandbox Network</strong>
-                            <small id="sandbox-status">
-                                Docker --network none
-                            </small>
-                        </div>
-                    </div>
+        <div class="upload-note">
+          <span>◈</span>
+          Files are stored under your local workbench upload directory and are
+          not sent to cloud AI services.
+        </div>
+      </div>
+    </section>
+  </div>
 
-                    <div class="security-row">
-                        <span class="security-icon success">●</span>
+  <template id="user-message-template">
+    <article class="message-row user-row">
+      <div class="user-avatar">U</div>
 
-                        <div>
-                            <strong>External Connections</strong>
-                            <small id="external-status">
-                                Checking...
-                            </small>
-                        </div>
-                    </div>
-                </div>
+      <div class="message-column user-message-column">
+        <div class="message-heading">
+          <span>You</span>
+        </div>
 
-                <div class="audit-card">
-                    <div class="audit-card-heading">
-                        <span>Latest Audit</span>
-                        <button
-                            id="refresh-monitor-button"
-                            class="icon-button"
-                            type="button"
-                            title="Refresh monitor"
-                        >
-                            ↻
-                        </button>
-                    </div>
+        <div class="message user-message">
+          <div class="message-content"></div>
+        </div>
+      </div>
+    </article>
+  </template>
 
-                    <div id="latest-audit-content">
-                        <p class="muted-text">
-                            Loading local audit records...
-                        </p>
-                    </div>
-                </div>
+  <template id="assistant-message-template">
+    <article class="message-row assistant-row">
+      <div class="assistant-avatar">✦</div>
 
-                <div class="monitor-footer">
-                    <span>LOCAL ENDPOINTS ONLY</span>
-                    <strong>127.0.0.1</strong>
-                </div>
-            </aside>
+      <div class="message-column assistant-message-column">
+        <div class="message-heading assistant-heading">
+          <span>Sovereign AI</span>
+          <span class="model-indicator">Local response</span>
+        </div>
 
-        </main>
+        <div class="message assistant-message">
+          <div class="message-content"></div>
+        </div>
 
-        <footer class="app-footer">
-            <span>SIH 2026 · Sovereign On-Premise Agentic AI Workbench</span>
-            <span>Open-weight models · Local RAG · Auditable tools</span>
-        </footer>
-    </div>
+        <div class="message-meta">
+          <div class="citation-list"></div>
 
-    <script src="/static/app.js"></script>
+          <div class="response-actions">
+            <button
+              class="response-action export-txt"
+              type="button"
+              title="Download response as text"
+            >
+              <span>↓</span>
+              TXT
+            </button>
+
+            <button
+              class="response-action export-md"
+              type="button"
+              title="Download response as Markdown"
+            >
+              <span>↓</span>
+              MD
+            </button>
+
+            <button
+              class="response-action export-pdf"
+              type="button"
+              title="Download response as PDF"
+            >
+              <span>↓</span>
+              PDF
+            </button>
+          </div>
+
+          <details class="technical-details">
+            <summary>
+              <span class="technical-summary-icon">◌</span>
+              View technical details
+            </summary>
+
+            <div class="technical-content"></div>
+          </details>
+
+          <div class="warning-list"></div>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <template id="loading-template">
+    <article class="message-row assistant-row loading-row">
+      <div class="assistant-avatar">✦</div>
+
+      <div class="message-column assistant-message-column">
+        <div class="message-heading assistant-heading">
+          <span>Sovereign AI</span>
+          <span class="model-indicator">Processing</span>
+        </div>
+
+        <div class="message assistant-message loading-message">
+          <span class="loading-dots">
+            <i></i><i></i><i></i>
+          </span>
+          <span id="loading-text">Thinking…</span>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="/static/app.js"></script>
 </body>
 </html>

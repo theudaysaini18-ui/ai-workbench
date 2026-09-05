@@ -23,9 +23,16 @@ def route_model(task_type: str) -> str:
     return TASK_MODEL_MAP.get(task_type, TASK_MODEL_MAP["general"])
 
 
-def call_ollama(model: str, prompt: str, image_path: str = None, json_schema: dict = None) -> str:
+def call_ollama(
+    model: str,
+    prompt: str,
+    image_path: str = None,
+    json_schema: dict = None,
+    messages: list[dict] | None = None,
+) -> str:
     """Thin wrapper around the local Ollama client. Always talks to 127.0.0.1:11434."""
-    messages = [{"role": "user", "content": prompt}]
+    if messages is None:
+        messages = [{"role": "user", "content": prompt}]
     if image_path:
         messages[0]["images"] = [image_path]
 

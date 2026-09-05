@@ -1,624 +1,1082 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
-const REQUEST_TIMEOUT_MS = 240000;
+const chatForm = document.getElementById("chat-form");
+const messageInput = document.getElementById("message-input");
+const fileInput = document.getElementById("file-input");
+const attachButton = document.getElementById("attach-button");
+const sendButton = document.getElementById("send-button");
+const attachmentList = document.getElementById("attachment-list");
+const chatMessages = document.getElementById("chat-messages");
 
-const taskConfigs = {
-    approval_note: {
-        eyebrow: "MULTI-AGENT WORKFLOW",
-        title: "Draft Approval Note from Scanned Report",
-        description:
-            "Upload an inspection report. Vision and Document agents will " +
-            "extract findings, consult local SOPs, and generate a formal " +
-            "Word approval note.",
-        route: "Vision → RAG → Document",
-        needsFile: true,
-        accept: ".jpg,.jpeg,.png",
-        uploadTitle: "Upload Inspection Image",
-        uploadHelp: "JPG or PNG · Stored only in local workspace",
-        defaultInstruction:
-            "Prepare an approval note for this industrial inspection report. " +
-            "Identify non-conformities and check whether escalation is " +
-            "required according to the local SOP.",
-        workflowSteps: [
-            {
-                agent: "Vision Agent",
-                detail: "Extract visible inspection findings with Qwen2.5-VL",
-            },
-            {
-                agent: "Knowledge Retrieval",
-                detail: "Retrieve relevant local SOP clauses from Chroma",
-            },
-            {
-                agent: "Document Agent",
-                detail: "Generate a grounded approval-note Word document",
-            },
-        ],
-    },
+const newChatButton = document.getElementById("new-chat-button");
+const chatsButton = document.getElementById("chats-button");
+const uploadsButton = document.getElementById("uploads-button");
+const logsButton = document.getElementById("logs-button");
+const topbarLogsButton = document.getElementById("topbar-logs-button");
+const clearRecentButton = document.getElementById("clear-recent-button");
+const recentChatsList = document.getElementById("recent-chats-list");
 
-    code_task: {
-        eyebrow: "SANDBOXED CODING WORKFLOW",
-        title: "Generate and Verify Python Code",
-        description:
-            "Describe an internal coding task. The Coder Agent will generate " +
-            "Python code, run it in a Docker sandbox with network disabled, " +
-            "and return verified output.",
-        route: "Code LLM → Docker Sandbox → Verify",
-        needsFile: false,
-        accept: "",
-        uploadTitle: "",
-        uploadHelp: "",
-        defaultInstruction:
-            "Write a Python script that prints the squares of numbers from 1 to 5.",
-        workflowSteps: [
-            {
-                agent: "Coder Agent",
-                detail: "Generate Python code using Qwen2.5-Coder",
-            },
-            {
-                agent: "Docker Sandbox",
-                detail: "Execute with CPU, memory, and network restrictions",
-            },
-            {
-                agent: "Verifier",
-                detail: "Capture stdout, stderr, and execution status",
-            },
-        ],
-    },
+const privacyButton = document.getElementById("privacy-button");
+const privacySidebarButton = document.getElementById(
+  "privacy-sidebar-button"
+);
+const privacyPanel = document.getElementById("privacy-panel");
+const closePrivacyPanelButton = document.getElementById(
+  "close-privacy-panel"
+);
 
-    vision_task: {
-        eyebrow: "MULTIMODAL WORKFLOW",
-        title: "Analyze Scanned Report / Image",
-        description:
-            "Upload an inspection image, handwritten maintenance note, or " +
-            "industrial photograph. The Vision Agent returns structured " +
-            "findings using an on-device multimodal model.",
-        route: "Vision Model → Structured JSON",
-        needsFile: true,
-        accept: ".jpg,.jpeg,.png",
-        uploadTitle: "Upload Image or Scanned Report",
-        uploadHelp: "JPG or PNG · Processed only on this workstation",
-        defaultInstruction:
-            "Extract all visible equipment inspection details as structured JSON.",
-        workflowSteps: [
-            {
-                agent: "Vision Agent",
-                detail: "Analyze the local image with Qwen2.5-VL",
-            },
-            {
-                agent: "Structured Extractor",
-                detail: "Return equipment fields and observations as JSON",
-            },
-        ],
-    },
-};
+const logsModal = document.getElementById("logs-modal");
+const closeLogsButton = document.getElementById("close-logs-button");
+const refreshLogsButton = document.getElementById("refresh-logs-button");
+const logsStatus = document.getElementById("logs-status");
+const logsList = document.getElementById("logs-list");
 
-let selectedTask = "approval_note";
-let selectedFile = null;
+const uploadsModal = document.getElementById("uploads-modal");
+const closeUploadsButton = document.getElementById("close-uploads-button");
+const largeUploadButton = document.getElementById("large-upload-button");
 
-const elements = {
-    taskCards: document.querySelectorAll(".task-card"),
-    taskEyebrow: document.getElementById("task-eyebrow"),
-    taskTitle: document.getElementById("task-title"),
-    taskDescription: document.getElementById("task-description"),
-    modelRoute: document.getElementById("model-route"),
-    uploadSection: document.getElementById("upload-section"),
-    fileInput: document.getElementById("file-input"),
-    filePreview: document.getElementById("file-preview"),
-    previewImage: document.getElementById("preview-image"),
-    selectedFileName: document.getElementById("selected-file-name"),
-    selectedFileSize: document.getElementById("selected-file-size"),
-    removeFileButton: document.getElementById("remove-file-button"),
-    instructions: document.getElementById("instructions"),
-    runTaskButton: document.getElementById("run-task-button"),
-    executionSection: document.getElementById("execution-section"),
-    workflowStatus: document.getElementById("workflow-status"),
-    workflowTimeline: document.getElementById("workflow-timeline"),
-    resultsSection: document.getElementById("results-section"),
-    resultStatus: document.getElementById("result-status"),
-    resultSummary: document.getElementById("result-summary"),
-    deliverablesContainer: document.getElementById("deliverables-container"),
-    rawResultJson: document.getElementById("raw-result-json"),
-    fastapiStatus: document.getElementById("fastapi-status"),
-    ollamaStatus: document.getElementById("ollama-status"),
-    sandboxStatus: document.getElementById("sandbox-status"),
-    externalStatus: document.getElementById("external-status"),
-    latestAuditContent: document.getElementById("latest-audit-content"),
-    refreshMonitorButton: document.getElementById("refresh-monitor-button"),
-};
+const userMessageTemplate = document.getElementById("user-message-template");
+const assistantMessageTemplate = document.getElementById(
+  "assistant-message-template"
+);
+const loadingTemplate = document.getElementById("loading-template");
+
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+const SESSION_STORAGE_KEY = "sih_workbench_session_id";
+const RECENT_CHATS_STORAGE_KEY = "sih_workbench_recent_chats";
+
+let pendingAttachments = [];
+let isSending = false;
+let sessionId = getSessionId();
 
 
-function formatFileSize(sizeInBytes) {
-    if (sizeInBytes < 1024) {
-        return `${sizeInBytes} B`;
-    }
+function createSessionId() {
+  if (window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
 
-    if (sizeInBytes < 1024 * 1024) {
-        return `${(sizeInBytes / 1024).toFixed(1)} KB`;
-    }
+  return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
-    return `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+
+function getSessionId() {
+  let storedSessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+
+  if (!storedSessionId) {
+    storedSessionId = createSessionId();
+    localStorage.setItem(SESSION_STORAGE_KEY, storedSessionId);
+  }
+
+  return storedSessionId;
+}
+
+
+function scrollToBottom() {
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 
 function escapeHtml(value) {
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 
-function renderTaskConfig() {
-    const config = taskConfigs[selectedTask];
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
 
-    elements.taskEyebrow.textContent = config.eyebrow;
-    elements.taskTitle.textContent = config.title;
-    elements.taskDescription.textContent = config.description;
-    elements.modelRoute.innerHTML = `
-        <span>ROUTE</span>
-        <strong>${escapeHtml(config.route)}</strong>
-    `;
 
-    elements.instructions.value = config.defaultInstruction;
+function renderMarkdown(markdown) {
+  const rawLines = String(markdown || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n");
 
-    if (config.needsFile) {
-        elements.uploadSection.classList.remove("hidden");
-        elements.fileInput.accept = config.accept;
-        elements.fileInput.closest(".upload-box").querySelector("strong").textContent =
-            config.uploadTitle;
-        elements.fileInput.closest(".upload-box").querySelector("small").textContent =
-            config.uploadHelp;
-    } else {
-        elements.uploadSection.classList.add("hidden");
-        clearSelectedFile();
+  const lines = rawLines.map((line) => {
+    const match = line.match(/^\s*1[.)]\s+(.+)$/);
+
+    if (!match) {
+      return line;
     }
 
-    renderWorkflowTemplate();
-    hidePreviousResult();
-}
+    return `- ${match[1]}`;
+  });
 
+  const html = [];
+  let inUnorderedList = false;
+  let inOrderedList = false;
+  let inCodeBlock = false;
+  let codeLines = [];
 
-function renderWorkflowTemplate() {
-    const config = taskConfigs[selectedTask];
-
-    elements.workflowTimeline.innerHTML = config.workflowSteps
-        .map(
-            (step, index) => `
-                <div class="timeline-item">
-                    <span class="timeline-number">${index + 1}</span>
-                    <div class="timeline-copy">
-                        <strong>${escapeHtml(step.agent)}</strong>
-                        <small>${escapeHtml(step.detail)}</small>
-                    </div>
-                    <span class="timeline-status">PENDING</span>
-                </div>
-            `
-        )
-        .join("");
-}
-
-
-function hidePreviousResult() {
-    elements.executionSection.classList.add("hidden");
-    elements.resultsSection.classList.add("hidden");
-    elements.rawResultJson.textContent = "";
-    elements.deliverablesContainer.innerHTML = "";
-}
-
-
-function clearSelectedFile() {
-    selectedFile = null;
-    elements.fileInput.value = "";
-    elements.filePreview.classList.add("hidden");
-    elements.previewImage.src = "";
-    elements.selectedFileName.textContent = "No file selected";
-    elements.selectedFileSize.textContent = "";
-}
-
-
-function handleFileSelection(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-        clearSelectedFile();
-        return;
+  function closeLists() {
+    if (inUnorderedList) {
+      html.push("</ul>");
+      inUnorderedList = false;
     }
 
-    selectedFile = file;
+    if (inOrderedList) {
+      html.push("</ol>");
+      inOrderedList = false;
+    }
+  }
 
-    elements.selectedFileName.textContent = file.name;
-    elements.selectedFileSize.textContent = formatFileSize(file.size);
+  function closeCodeBlock() {
+    if (inCodeBlock) {
+      html.push(
+        `<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`
+      );
 
-    const previewUrl = URL.createObjectURL(file);
-    elements.previewImage.src = previewUrl;
-    elements.filePreview.classList.remove("hidden");
+      codeLines = [];
+      inCodeBlock = false;
+    }
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+
+    if (line.trim().startsWith("```")) {
+      if (inCodeBlock) {
+        closeCodeBlock();
+      } else {
+        closeLists();
+        inCodeBlock = true;
+      }
+
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(rawLine);
+      continue;
+    }
+
+    if (!line.trim()) {
+      closeLists();
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+
+    if (heading) {
+      closeLists();
+
+      const level = heading.length;[1]
+
+      html.push(
+        `<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`
+      );
+
+      continue;
+    }
+
+    const unorderedItem = line.match(/^\s*[-*]\s+(.+)$/);
+
+    if (unorderedItem) {
+      if (inOrderedList) {
+        html.push("</ol>");
+        inOrderedList = false;
+      }
+
+      if (!inUnorderedList) {
+        html.push("<ul>");
+        inUnorderedList = true;
+      }
+
+      html.push(`<li>${renderInlineMarkdown(unorderedItem[1])}</li>`);
+      continue;
+    }
+
+    const orderedItem = line.match(/^\s*\d+[.)]\s+(.+)$/);
+
+    if (orderedItem) {
+      if (inUnorderedList) {
+        html.push("</ul>");
+        inUnorderedList = false;
+      }
+
+      if (!inOrderedList) {
+        html.push("<ol>");
+        inOrderedList = true;
+      }
+
+      html.push(`<li>${renderInlineMarkdown(orderedItem[1])}</li>`);
+      continue;
+    }
+
+    const quote = line.match(/^>\s?(.+)$/);
+
+    if (quote) {
+      closeLists();
+      html.push(`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`);
+      continue;
+    }
+
+    closeLists();
+    html.push(`<p>${renderInlineMarkdown(line)}</p>`);
+  }
+
+  closeLists();
+  closeCodeBlock();
+
+  return html.join("") || "<p>No response content was returned.</p>";
 }
 
 
-async function requestWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+function removeEmptyState() {
+  const emptyState = chatMessages.querySelector(".hero-empty-state");
 
-    try {
-        const response = await fetch(url, {
-            ...options,
-            signal: controller.signal,
-        });
-
-        const contentType = response.headers.get("content-type") || "";
-        const body = contentType.includes("application/json")
-            ? await response.json()
-            : await response.text();
-
-        if (!response.ok) {
-            const message =
-                typeof body === "object"
-                    ? JSON.stringify(body, null, 2)
-                    : body || `HTTP ${response.status}`;
-
-            throw new Error(message);
-        }
-
-        return body;
-    } finally {
-        clearTimeout(timeoutId);
-    }
+  if (emptyState) {
+    emptyState.remove();
+  }
 }
 
 
-async function uploadSelectedFile() {
-    if (!selectedFile) {
-        return null;
+function addUserMessage(message, attachmentNames) {
+  removeEmptyState();
+
+  const fragment = userMessageTemplate.content.cloneNode(true);
+  const content = fragment.querySelector(".message-content");
+
+  let html = `<p>${renderInlineMarkdown(message)}</p>`;
+
+  if (attachmentNames.length > 0) {
+    html += "<ul>";
+
+    for (const filename of attachmentNames) {
+      html += `<li>Attached: ${escapeHtml(filename)}</li>`;
     }
 
-    const formData = new FormData();
-    formData.append("file", selectedFile);
+    html += "</ul>";
+  }
 
-    const response = await requestWithTimeout(
-        `${API_BASE_URL}/upload`,
-        {
-            method: "POST",
-            body: formData,
-        },
-        30000
-    );
-
-    return response.path;
+  content.innerHTML = html;
+  chatMessages.appendChild(fragment);
+  scrollToBottom();
 }
 
 
-function setWorkflowRunning(isRunning) {
-    elements.runTaskButton.disabled = isRunning;
+function downloadTextFile(content, filename, mimeType) {
+  const blob = new Blob([content], {
+    type: mimeType,
+  });
 
-    if (isRunning) {
-        elements.runTaskButton.innerHTML = `
-            <span>Running Local Workflow...</span>
-            <span class="button-arrow">◌</span>
-        `;
-        elements.workflowStatus.textContent = "RUNNING";
-        elements.workflowStatus.className = "running-badge";
-    } else {
-        elements.runTaskButton.innerHTML = `
-            <span>Run Local Agent Workflow</span>
-            <span class="button-arrow">→</span>
-        `;
-    }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
 }
 
 
-function renderCompletedSteps(result) {
-    const steps = result.steps || [];
+async function downloadPdf(answer, button) {
+  const originalText = button.innerHTML;
 
-    if (!steps.length) {
-        return;
-    }
+  try {
+    button.disabled = true;
+    button.textContent = "Creating…";
 
-    elements.workflowTimeline.innerHTML = steps
-        .map((step) => {
-            const status = step.status || "unknown";
-            const agent = step.agent || "unknown_agent";
-            const model = step.model_used || "No model recorded";
-            const tools = (step.tools_used || []).join(", ") || "No tools recorded";
-
-            return `
-                <div class="timeline-item">
-                    <span class="timeline-number">${escapeHtml(step.step || "?")}</span>
-                    <div class="timeline-copy">
-                        <strong>${escapeHtml(agent)}</strong>
-                        <small>
-                            Model: ${escapeHtml(model)}
-                            <br>
-                            Tools: ${escapeHtml(tools)}
-                        </small>
-                    </div>
-                    <span class="timeline-status">${escapeHtml(status.toUpperCase())}</span>
-                </div>
-            `;
-        })
-        .join("");
-}
-
-
-function renderDeliverables(result) {
-    const deliverables = result.deliverables || [];
-    const paths = result.deliverable_paths || [];
-
-    if (deliverables.length) {
-        elements.deliverablesContainer.innerHTML = deliverables
-            .map(
-                (file) => `
-                    <div class="deliverable-card">
-                        <div>
-                            <strong>📄 ${escapeHtml(file.filename)}</strong>
-                            <small>Generated locally on this workstation</small>
-                        </div>
-                        <a
-                            class="download-button"
-                            href="${escapeHtml(file.download_url)}"
-                            download
-                        >
-                            Download
-                        </a>
-                    </div>
-                `
-            )
-            .join("");
-        return;
-    }
-
-    if (paths.length) {
-        elements.deliverablesContainer.innerHTML = paths
-            .map(
-                (filePath) => `
-                    <div class="deliverable-card">
-                        <div>
-                            <strong>📄 ${escapeHtml(filePath.split("/").pop())}</strong>
-                            <small>
-                                Generated locally: ${escapeHtml(filePath)}
-                            </small>
-                        </div>
-                        <span class="download-button">
-                            Available in data/uploads
-                        </span>
-                    </div>
-                `
-            )
-            .join("");
-        return;
-    }
-
-    elements.deliverablesContainer.innerHTML = "";
-}
-
-
-function renderTaskResult(result) {
-    elements.resultsSection.classList.remove("hidden");
-
-    const successful = result.status === "success";
-
-    elements.resultStatus.textContent = successful ? "COMPLETED" : "FAILED";
-    elements.resultStatus.className = successful
-        ? "success-badge"
-        : "running-badge";
-
-    const models = (result.models_used || []).join(" → ") || "None";
-    const tools = (result.tools_used || []).join(" → ") || "None";
-
-    elements.resultSummary.innerHTML = `
-        <div class="result-meta-card">
-            <span>TASK ID</span>
-            <strong>${escapeHtml(result.task_id || "Unknown")}</strong>
-        </div>
-        <div class="result-meta-card">
-            <span>WORKFLOW STATUS</span>
-            <strong>${escapeHtml((result.status || "unknown").toUpperCase())}</strong>
-        </div>
-        <div class="result-meta-card">
-            <span>MODELS AUTO-SELECTED</span>
-            <strong>${escapeHtml(models)}</strong>
-        </div>
-        <div class="result-meta-card">
-            <span>TOOLS EXECUTED</span>
-            <strong>${escapeHtml(tools)}</strong>
-        </div>
-    `;
-
-    renderCompletedSteps(result);
-    renderDeliverables(result);
-
-    elements.rawResultJson.textContent = JSON.stringify(result, null, 2);
-}
-
-
-async function refreshSovereigntyMonitor() {
-    try {
-        const health = await requestWithTimeout(
-            `${API_BASE_URL}/health`,
-            { method: "GET" },
-            10000
-        );
-
-        elements.fastapiStatus.textContent = "Connected at 127.0.0.1:8000";
-        elements.ollamaStatus.textContent =
-            health.ollama_endpoint || "127.0.0.1:11434";
-        elements.sandboxStatus.textContent =
-            health.sandbox_network || "Docker --network none";
-
-        const externalCount = health.external_call_count ?? "Unknown";
-
-        if (externalCount === 0) {
-            elements.externalStatus.textContent =
-                "0 visible non-local connections";
-        } else {
-            elements.externalStatus.textContent =
-                `${externalCount} visible external connection(s)`;
-        }
-
-        const logs = await requestWithTimeout(
-            `${API_BASE_URL}/logs?limit=1`,
-            { method: "GET" },
-            10000
-        );
-
-        const latestAudit = logs.entries?.at(-1);
-
-        if (!latestAudit) {
-            elements.latestAuditContent.innerHTML = `
-                <p class="muted-text">
-                    No audit records yet. Run a local workflow to create one.
-                </p>
-            `;
-            return;
-        }
-
-        const models = (latestAudit.models_used || []).join(", ") || "None";
-        const tools = (latestAudit.tools_used || []).join(", ") || "None";
-
-        elements.latestAuditContent.innerHTML = `
-            <div class="audit-list">
-                <div>
-                    <span>TASK ID</span>
-                    <strong>${escapeHtml(latestAudit.task_id || "Unknown")}</strong>
-                </div>
-                <div>
-                    <span>SOVEREIGNTY STATUS</span>
-                    <strong>${escapeHtml(
-                        latestAudit.sovereignty_status || "Unknown"
-                    )}</strong>
-                </div>
-                <div>
-                    <span>MODELS</span>
-                    <strong>${escapeHtml(models)}</strong>
-                </div>
-                <div>
-                    <span>TOOLS</span>
-                    <strong>${escapeHtml(tools)}</strong>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        elements.fastapiStatus.textContent = "Backend unavailable";
-        elements.externalStatus.textContent = "Monitor unavailable";
-
-        elements.latestAuditContent.innerHTML = `
-            <p class="muted-text">
-                Could not reach local backend. Start FastAPI on port 8000.
-            </p>
-        `;
-
-        console.error("Sovereignty monitor error:", error);
-    }
-}
-
-
-async function runTask() {
-    const config = taskConfigs[selectedTask];
-    const instructions = elements.instructions.value.trim();
-
-    if (!instructions) {
-        alert("Please enter task instructions.");
-        return;
-    }
-
-    if (config.needsFile && !selectedFile) {
-        alert("Please choose an image before running this workflow.");
-        return;
-    }
-
-    hidePreviousResult();
-    elements.executionSection.classList.remove("hidden");
-    elements.workflowStatus.textContent = "UPLOADING";
-    renderWorkflowTemplate();
-    setWorkflowRunning(true);
-
-    try {
-        let inputFiles = [];
-
-        if (config.needsFile) {
-            const uploadedPath = await uploadSelectedFile();
-            inputFiles = [uploadedPath];
-        }
-
-        elements.workflowStatus.textContent = "AGENTS RUNNING";
-
-        const result = await requestWithTimeout(
-            `${API_BASE_URL}/run_task`,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    task_type: selectedTask,
-                    input_files: inputFiles,
-                    instructions,
-                }),
-            }
-        );
-
-        elements.workflowStatus.textContent =
-            result.status === "success" ? "COMPLETED" : "FAILED";
-
-        renderTaskResult(result);
-        await refreshSovereigntyMonitor();
-    } catch (error) {
-        elements.workflowStatus.textContent = "FAILED";
-
-        elements.resultsSection.classList.remove("hidden");
-        elements.resultStatus.textContent = "FAILED";
-        elements.resultStatus.className = "running-badge";
-
-        elements.resultSummary.innerHTML = `
-            <div class="result-meta-card">
-                <span>ERROR</span>
-                <strong>${escapeHtml(error.message)}</strong>
-            </div>
-        `;
-
-        elements.rawResultJson.textContent = error.message;
-        console.error("Task execution error:", error);
-    } finally {
-        setWorkflowRunning(false);
-    }
-}
-
-
-function setupEventListeners() {
-    elements.taskCards.forEach((card) => {
-        card.addEventListener("click", () => {
-            selectedTask = card.dataset.task;
-
-            elements.taskCards.forEach((item) => {
-                item.classList.remove("active");
-            });
-
-            card.classList.add("active");
-            renderTaskConfig();
-        });
+    const response = await fetch("/export/pdf", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Sovereign AI Workbench Response",
+        answer,
+      }),
     });
 
-    elements.fileInput.addEventListener("change", handleFileSelection);
+    if (!response.ok) {
+      const errorText = await response.text();
 
-    elements.removeFileButton.addEventListener("click", clearSelectedFile);
+      throw new Error(
+        errorText || "Local PDF generation failed."
+      );
+    }
 
-    elements.runTaskButton.addEventListener("click", runTask);
+    const pdfBlob = await response.blob();
+    const url = URL.createObjectURL(pdfBlob);
 
-    elements.refreshMonitorButton.addEventListener(
-        "click",
-        refreshSovereigntyMonitor
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "sovereign-ai-response.pdf";
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    alert(
+      `Could not create the local PDF: ${
+        error.message || "Unknown error"
+      }`
     );
+  } finally {
+    button.disabled = false;
+    button.innerHTML = originalText;
+  }
 }
 
 
-function initializeApp() {
-    setupEventListeners();
-    renderTaskConfig();
-    refreshSovereigntyMonitor();
+function addAssistantMessage(response) {
+  const fragment = assistantMessageTemplate.content.cloneNode(true);
 
-    // Refresh the monitor every 15 seconds while the dashboard is open.
-    window.setInterval(refreshSovereigntyMonitor, 15000);
+  const content = fragment.querySelector(".message-content");
+  const citationList = fragment.querySelector(".citation-list");
+  const warningList = fragment.querySelector(".warning-list");
+  const technicalContent = fragment.querySelector(".technical-content");
+  const assistantMessage = fragment.querySelector(".assistant-message");
+
+  const txtButton = fragment.querySelector(".export-txt");
+  const mdButton = fragment.querySelector(".export-md");
+  const pdfButton = fragment.querySelector(".export-pdf");
+
+  content.innerHTML = renderMarkdown(response.answer);
+
+  if (
+    response.technical_trace?.safety_status ===
+    "EXTERNAL_ACTION_BLOCKED"
+  ) {
+    assistantMessage.classList.add("blocked-message");
+
+    const blockedBanner = document.createElement("div");
+    blockedBanner.className = "blocked-banner";
+    blockedBanner.textContent =
+      "External transmission blocked — confidential data remains local.";
+
+    assistantMessage.prepend(blockedBanner);
+  }
+
+  for (const citation of response.citations || []) {
+    const chip = document.createElement("span");
+    chip.className = "citation-chip";
+    chip.title = citation.excerpt || "Local source";
+    chip.textContent = `Source: ${citation.source}`;
+    citationList.appendChild(chip);
+  }
+
+  for (const warning of response.warnings || []) {
+    const chip = document.createElement("span");
+    chip.className = "warning-chip";
+    chip.textContent = `Warning: ${warning}`;
+    warningList.appendChild(chip);
+  }
+
+  const trace = response.technical_trace;
+
+  if (trace) {
+    const rows = [
+      ["Agent", (trace.agents || []).join(", ") || "Not recorded"],
+      ["Model", (trace.models || []).join(", ") || "Not recorded"],
+      ["Tools", (trace.tools || []).join(", ") || "None"],
+      ["Safety", trace.safety_status || "Not recorded"],
+      ["External calls", String(trace.external_call_count ?? 0)],
+      ["Task ID", trace.task_id || "Not recorded"],
+    ];
+
+    for (const [label, value] of rows) {
+      const row = document.createElement("div");
+
+      row.innerHTML = `
+        <strong>${escapeHtml(label)}:</strong>
+        <code>${escapeHtml(value)}</code>
+      `;
+
+      technicalContent.appendChild(row);
+    }
+  } else {
+    technicalContent.innerHTML =
+      "<div>No technical trace was returned.</div>";
+  }
+
+  txtButton.addEventListener("click", () => {
+    downloadTextFile(
+      response.answer,
+      "sovereign-ai-response.txt",
+      "text/plain;charset=utf-8"
+    );
+  });
+
+  mdButton.addEventListener("click", () => {
+    downloadTextFile(
+      response.answer,
+      "sovereign-ai-response.md",
+      "text/markdown;charset=utf-8"
+    );
+  });
+
+  pdfButton.addEventListener("click", async () => {
+    await downloadPdf(response.answer, pdfButton);
+  });
+
+  chatMessages.appendChild(fragment);
+  scrollToBottom();
 }
 
 
-document.addEventListener("DOMContentLoaded", initializeApp);
+function addErrorMessage(message) {
+  addAssistantMessage({
+    answer: `**Unable to complete the request.**\n\n${message}`,
+    citations: [],
+    warnings: [message],
+    technical_trace: {
+      task_id: "frontend-error",
+      agents: [],
+      models: [],
+      tools: [],
+      safety_status: "REQUEST_NOT_COMPLETED",
+      external_call_count: 0,
+    },
+  });
+}
+
+
+function addLoadingMessage() {
+  const fragment = loadingTemplate.content.cloneNode(true);
+  const loadingElement = fragment.querySelector(".loading-row");
+
+  chatMessages.appendChild(fragment);
+  scrollToBottom();
+
+  return loadingElement;
+}
+
+
+function setComposerBusy(busy) {
+  isSending = busy;
+  sendButton.disabled = busy;
+  attachButton.disabled = busy;
+  messageInput.disabled = busy;
+
+  if (!busy) {
+    messageInput.focus();
+  }
+}
+
+
+function autoResizeMessageInput() {
+  messageInput.style.height = "auto";
+  messageInput.style.height = `${Math.min(
+    messageInput.scrollHeight,
+    180
+  )}px`;
+}
+
+
+function renderAttachmentList() {
+  attachmentList.innerHTML = "";
+
+  for (const attachment of pendingAttachments) {
+    const chip = document.createElement("div");
+    chip.className = "attachment-chip";
+
+    const icon = document.createElement("span");
+    icon.className = "attachment-icon";
+    icon.textContent = "▣";
+
+    const name = document.createElement("span");
+    name.className = "attachment-name";
+    name.textContent = attachment.file.name;
+    name.title = attachment.file.name;
+
+    const removeButton = document.createElement("button");
+    removeButton.className = "remove-attachment";
+    removeButton.type = "button";
+    removeButton.title = "Remove attachment";
+    removeButton.setAttribute("aria-label", "Remove attachment");
+    removeButton.textContent = "×";
+
+    removeButton.addEventListener("click", () => {
+      pendingAttachments = pendingAttachments.filter(
+        (item) => item.id !== attachment.id
+      );
+
+      renderAttachmentList();
+    });
+
+    chip.append(icon, name, removeButton);
+    attachmentList.appendChild(chip);
+  }
+}
+
+
+function addSelectedFiles(fileList) {
+  const selectedFiles = Array.from(fileList || []);
+
+  for (const file of selectedFiles) {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      addErrorMessage(
+        `${file.name} is larger than the current 25 MB upload limit.`
+      );
+
+      continue;
+    }
+
+    pendingAttachments.push({
+      id: createSessionId(),
+      file,
+    });
+  }
+
+  renderAttachmentList();
+}
+
+
+async function uploadAttachment(attachment) {
+  const formData = new FormData();
+  formData.append("file", attachment.file);
+
+  const response = await fetch("/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+
+    throw new Error(
+      `Upload failed for ${attachment.file.name}: ${
+        text || response.status
+      }`
+    );
+  }
+
+  const result = await response.json();
+
+  if (!result.path) {
+    throw new Error(
+      "The local upload response did not include a file path."
+    );
+  }
+
+  return {
+    filename: result.filename || attachment.file.name,
+    path: result.path,
+  };
+}
+
+
+function getRecentChats() {
+  try {
+    const stored = localStorage.getItem(RECENT_CHATS_STORAGE_KEY);
+    const parsed = JSON.parse(stored || "[]");
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+
+function saveRecentChat(message) {
+  const cleanedMessage = String(message || "").trim();
+
+  if (!cleanedMessage) {
+    return;
+  }
+
+  const existing = getRecentChats().filter(
+    (item) => item.message !== cleanedMessage
+  );
+
+  const next = [
+    {
+      id: createSessionId(),
+      message: cleanedMessage,
+      createdAt: new Date().toISOString(),
+    },
+    ...existing,
+  ].slice(0, 10);
+
+  localStorage.setItem(
+    RECENT_CHATS_STORAGE_KEY,
+    JSON.stringify(next)
+  );
+
+  renderRecentChats();
+}
+
+
+function renderRecentChats() {
+  const recentChats = getRecentChats();
+
+  recentChatsList.innerHTML = "";
+
+  if (recentChats.length === 0) {
+    recentChatsList.innerHTML =
+      '<p class="recent-empty">Your recent chats will appear here.</p>';
+
+    return;
+  }
+
+  for (const recentChat of recentChats) {
+    const button = document.createElement("button");
+
+    button.className = "recent-chat-button";
+    button.type = "button";
+    button.title = recentChat.message;
+    button.textContent = recentChat.message;
+
+    button.addEventListener("click", () => {
+      messageInput.value = recentChat.message;
+      autoResizeMessageInput();
+      messageInput.focus();
+    });
+
+    recentChatsList.appendChild(button);
+  }
+}
+
+
+async function sendMessage() {
+  const message = messageInput.value.trim();
+
+  if (isSending || (!message && pendingAttachments.length === 0)) {
+    return;
+  }
+
+  if (!message) {
+    addErrorMessage(
+      "Please enter a message describing what you want done."
+    );
+
+    return;
+  }
+
+  const attachmentsForMessage = [...pendingAttachments];
+
+  const attachmentNames = attachmentsForMessage.map(
+    (attachment) => attachment.file.name
+  );
+
+  addUserMessage(message, attachmentNames);
+  saveRecentChat(message);
+
+  messageInput.value = "";
+  autoResizeMessageInput();
+
+  pendingAttachments = [];
+  renderAttachmentList();
+
+  setComposerBusy(true);
+
+  const loadingMessage = addLoadingMessage();
+
+  try {
+    const uploadedAttachments = [];
+
+    for (const attachment of attachmentsForMessage) {
+      uploadedAttachments.push(await uploadAttachment(attachment));
+    }
+
+    const chatResponse = await fetch("/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        message,
+        attachment_paths: uploadedAttachments.map(
+          (attachment) => attachment.path
+        ),
+        use_knowledge_base: false,
+      }),
+    });
+
+    if (!chatResponse.ok) {
+      const text = await chatResponse.text();
+
+      throw new Error(
+        text || `Chat request failed: ${chatResponse.status}`
+      );
+    }
+
+    const result = await chatResponse.json();
+
+    loadingMessage.remove();
+    addAssistantMessage(result);
+  } catch (error) {
+    loadingMessage.remove();
+
+    addErrorMessage(
+      error.message || "An unexpected local error occurred."
+    );
+  } finally {
+    setComposerBusy(false);
+  }
+}
+
+
+function renderNewChatEmptyState() {
+  chatMessages.innerHTML = `
+    <article class="hero-empty-state">
+      <div class="hero-orb">
+        <span>✦</span>
+      </div>
+
+      <p class="eyebrow">NEW PRIVATE CONVERSATION</p>
+
+      <h2>What would you like to work on?</h2>
+
+      <p class="hero-description">
+        Upload confidential files, analyze images, write code, or ask a
+        question using local AI models.
+      </p>
+
+      <div class="hero-features">
+        <span>◈ Local models</span>
+        <span>◌ File-aware chat</span>
+        <span>◷ Auditable activity</span>
+      </div>
+    </article>
+  `;
+}
+
+
+async function createNewChat() {
+  if (isSending) {
+    return;
+  }
+
+  try {
+    await fetch(
+      `/chat/clear?session_id=${encodeURIComponent(sessionId)}`,
+      {
+        method: "POST",
+      }
+    );
+  } catch (error) {
+    console.warn("Could not clear the previous local chat:", error);
+  }
+
+  sessionId = createSessionId();
+  localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+
+  pendingAttachments = [];
+  renderAttachmentList();
+
+  renderNewChatEmptyState();
+
+  messageInput.value = "";
+  autoResizeMessageInput();
+  messageInput.focus();
+}
+
+
+function formatLogDate(value) {
+  if (!value) {
+    return "Time not recorded";
+  }
+
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return String(value);
+  }
+
+  return parsedDate.toLocaleString();
+}
+
+
+function escapeLogValue(value) {
+  return escapeHtml(
+    Array.isArray(value)
+      ? value.join(", ")
+      : String(value ?? "Not recorded")
+  );
+}
+
+
+function renderLogs(entries) {
+  logsList.innerHTML = "";
+
+  if (!entries || entries.length === 0) {
+    logsList.innerHTML = `
+      <div class="empty-logs">
+        <div class="empty-logs-icon">◷</div>
+        <strong>No activity logs yet</strong>
+        <p>
+          Send a message, analyze a file, or run a coding request to create a
+          local audit record.
+        </p>
+      </div>
+    `;
+
+    return;
+  }
+
+  for (const entry of entries) {
+    const taskId = entry.task_id || entry.id || "Task ID not recorded";
+
+    const timestamp =
+      entry.timestamp ||
+      entry.created_at ||
+      entry.time ||
+      entry.logged_at;
+
+    const status = entry.status || "completed";
+
+    const models =
+      entry.models_used ||
+      entry.models ||
+      [];
+
+    const tools =
+      entry.tools_used ||
+      entry.tools ||
+      [];
+
+    const safetyStatus =
+      entry.sovereignty_status ||
+      entry.safety_status ||
+      "LOCAL_ONLY_NO_EXTERNAL_CONNECTIONS_VISIBLE";
+
+    const externalCallCount =
+      entry.external_call_count ??
+      0;
+
+    const normalizedStatus = String(status)
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+
+    const logCard = document.createElement("article");
+    logCard.className = "log-card";
+
+    logCard.innerHTML = `
+      <div class="log-card-top">
+        <div>
+          <span class="log-status ${escapeLogValue(normalizedStatus)}">
+            ${escapeLogValue(status)}
+          </span>
+
+          <span class="log-time">
+            ${escapeLogValue(formatLogDate(timestamp))}
+          </span>
+        </div>
+
+        <code class="log-task-id">${escapeLogValue(taskId)}</code>
+      </div>
+
+      <div class="log-grid">
+        <div>
+          <span>Models</span>
+          <strong>${escapeLogValue(
+            models.length ? models : "None"
+          )}</strong>
+        </div>
+
+        <div>
+          <span>Tools</span>
+          <strong>${escapeLogValue(
+            tools.length ? tools : "None"
+          )}</strong>
+        </div>
+
+        <div>
+          <span>External calls</span>
+          <strong>${escapeLogValue(externalCallCount)}</strong>
+        </div>
+      </div>
+
+      <div class="log-safety">
+        ◈ ${escapeLogValue(safetyStatus)}
+      </div>
+    `;
+
+    logsList.appendChild(logCard);
+  }
+}
+
+
+async function openLogsModal() {
+  logsModal.classList.remove("hidden");
+  logsStatus.textContent = "Loading local activity…";
+  logsList.innerHTML = "";
+
+  try {
+    const response = await fetch("/logs?limit=100");
+
+    if (!response.ok) {
+      throw new Error(`Could not load logs: ${response.status}`);
+    }
+
+    const result = await response.json();
+    const entries = result.entries || [];
+
+    logsStatus.textContent =
+      entries.length === 1
+        ? "1 local activity record"
+        : `${entries.length} local activity records`;
+
+    renderLogs(entries);
+  } catch (error) {
+    logsStatus.textContent = "Could not load local activity.";
+
+    logsList.innerHTML = `
+      <div class="empty-logs error-logs">
+        <div class="empty-logs-icon">!</div>
+        <strong>Activity logs unavailable</strong>
+        <p>${escapeHtml(error.message || "Unknown local error.")}</p>
+      </div>
+    `;
+  }
+}
+
+
+function closeLogsModal() {
+  logsModal.classList.add("hidden");
+}
+
+
+function openUploadsModal() {
+  uploadsModal.classList.remove("hidden");
+}
+
+
+function closeUploadsModal() {
+  uploadsModal.classList.add("hidden");
+}
+
+
+function togglePrivacyPanel() {
+  const isHidden = privacyPanel.classList.toggle("hidden");
+
+  privacyButton.setAttribute("aria-expanded", String(!isHidden));
+  privacySidebarButton.setAttribute(
+    "aria-expanded",
+    String(!isHidden)
+  );
+}
+
+
+function closePrivacyPanel() {
+  privacyPanel.classList.add("hidden");
+
+  privacyButton.setAttribute("aria-expanded", "false");
+  privacySidebarButton.setAttribute("aria-expanded", "false");
+}
+
+
+function activateSidebarItem(button) {
+  for (const navItem of document.querySelectorAll(".nav-item")) {
+    navItem.classList.remove("active");
+  }
+
+  button.classList.add("active");
+}
+
+
+attachButton.addEventListener("click", () => {
+  fileInput.click();
+});
+
+fileInput.addEventListener("change", (event) => {
+  addSelectedFiles(event.target.files);
+  fileInput.value = "";
+});
+
+largeUploadButton.addEventListener("click", () => {
+  closeUploadsModal();
+  fileInput.click();
+});
+
+chatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await sendMessage();
+});
+
+messageInput.addEventListener("input", autoResizeMessageInput);
+
+messageInput.addEventListener("keydown", async (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    await sendMessage();
+  }
+});
+
+newChatButton.addEventListener("click", createNewChat);
+
+chatsButton.addEventListener("click", () => {
+  activateSidebarItem(chatsButton);
+  messageInput.focus();
+});
+
+uploadsButton.addEventListener("click", () => {
+  activateSidebarItem(uploadsButton);
+  openUploadsModal();
+});
+
+logsButton.addEventListener("click", () => {
+  activateSidebarItem(logsButton);
+  openLogsModal();
+});
+
+topbarLogsButton.addEventListener("click", openLogsModal);
+
+closeLogsButton.addEventListener("click", closeLogsModal);
+
+refreshLogsButton.addEventListener("click", openLogsModal);
+
+closeUploadsButton.addEventListener("click", closeUploadsModal);
+
+privacyButton.addEventListener("click", togglePrivacyPanel);
+
+privacySidebarButton.addEventListener("click", togglePrivacyPanel);
+
+closePrivacyPanelButton.addEventListener("click", closePrivacyPanel);
+
+clearRecentButton.addEventListener("click", () => {
+  localStorage.removeItem(RECENT_CHATS_STORAGE_KEY);
+  renderRecentChats();
+});
+
+logsModal.addEventListener("click", (event) => {
+  if (event.target === logsModal) {
+    closeLogsModal();
+  }
+});
+
+uploadsModal.addEventListener("click", (event) => {
+  if (event.target === uploadsModal) {
+    closeUploadsModal();
+  }
+});
+
+document.addEventListener("keydown", async (event) => {
+  const commandOrControl = event.metaKey || event.ctrlKey;
+
+  if (commandOrControl && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    await createNewChat();
+  }
+
+  if (event.key === "Escape") {
+    closeLogsModal();
+    closeUploadsModal();
+    closePrivacyPanel();
+  }
+});
+
+for (const starterCard of document.querySelectorAll(".starter-card")) {
+  starterCard.addEventListener("click", () => {
+    messageInput.value = starterCard.dataset.prompt || "";
+    autoResizeMessageInput();
+    messageInput.focus();
+  });
+}
+
+autoResizeMessageInput();
+renderRecentChats();

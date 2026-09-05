@@ -1,49 +1,106 @@
-import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+import os
+import sys
 
-from backend.model_router import call_ollama
-from tools.sandbox import run_python_code
-
-MODEL = "qwen2.5-coder:7b"
-
-SYSTEM_PROMPT = """You are the Coder Agent. Write clean, working Python code for the user's request.
-Return ONLY the code, no explanations, no markdown fences."""
+import ollama
 
 
-def run(instructions: str, context: dict = None, max_retries: int = 3) -> dict:
-    prompt = f"{SYSTEM_PROMPT}\n\nTask: {instructions}"
-    code = call_ollama(MODEL, prompt).strip()
-    code = code.replace("```python", "").replace("```", "").strip()
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..")
+)
 
-    for attempt in range(max_retries):
-        result = run_python_code(code)
-        if result["exit_code"] == 0:
-            return {
-                "model_used": MODEL,
-                "tools_used": ["run_python_code"],
-                "code": code,
-                "stdout": result["stdout"],
-                "stderr": result["stderr"],
-                "deliverable_paths": [],
-                "status": "success",
-            }
-        fix_prompt = (
-            f"{SYSTEM_PROMPT}\n\nThe following code failed:\n{code}\n\n"
-            f"Error:\n{result['stderr']}\n\nFix it and return ONLY the corrected code."
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
+
+
+CODING_MODEL = "qwen2.5-coder:7b"
+
+
+def run(
+    user_message: str,
+    conversation_history: list[dict] | None = None,
+) -> dict:
+    """
+    Handle coding, debugging, and code-explanation requests locally.
+    """
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a careful local coding assistant. "
+                "Write correct, runnable code. "
+                "Explain assumptions briefly. "
+                "Do not claim that code was executed unless it was actually "
+                "run by a tool. "
+                "When appropriate, include the complete code in a fenced "
+                "code block."
+            ),
+        }
+    ]
+
+    if conversation_history:
+        messages.extend(conversation_history[-8:])
+
+    messages.append(
+        {
+            "role": "user",
+            "content": user_message,
+        }
+    )
+
+    try:
+        response = ollama.chat(
+            model=CODING_MODEL,
+            messages=messages,
+            options={
+                "temperature": 0,
+                "num_ctx": 8192,
+            },
         )
-        code = call_ollama(MODEL, fix_prompt).strip().replace("```python", "").replace("```", "").strip()
 
-    return {
-        "model_used": MODEL,
-        "tools_used": ["run_python_code"],
-        "code": code,
-        "stdout": "",
-        "stderr": "Failed after retries",
-        "deliverable_paths": [],
-        "status": "failed",
-    }
+        if hasattr(response, "message"):
+            answer = response.message.content.strip()
+        else:
+            answer = response["message"]["content"].strip()
+
+        return {
+            "status": "success",
+            "response_type": "code",
+            "answer": answer,
+            "model_used": CODING_MODEL,
+            "tools_used": ["ollama_chat"],
+            "deliverable_paths": [],
+            "structured_data": None,
+            "citations": [],
+            "warnings": [],
+        }
+
+    except Exception as error:
+        return {
+            "status": "failed",
+            "response_type": "error",
+            "answer": (
+                "I could not process the coding request with the local "
+                "coding model."
+            ),
+            "model_used": CODING_MODEL,
+            "tools_used": ["ollama_chat"],
+            "deliverable_paths": [],
+            "structured_data": None,
+            "citations": [],
+            "warnings": [f"Coding model error: {error}"],
+        }
 
 
 if __name__ == "__main__":
-    out = run("Write a script that prints the first 10 fibonacci numbers.")
-    print(out)
+    result = run(
+        "Write Python code to generate the first 10 Fibonacci numbers."
+    )
+
+    print("\n--- STATUS ---")
+    print(result["status"])
+
+    print("\n--- ANSWER ---")
+    print(result["answer"])
+
+    print("\n--- MODEL ---")
+    print(result["model_used"])
