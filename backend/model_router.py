@@ -29,7 +29,14 @@ def call_ollama(model: str, prompt: str, image_path: str = None, json_schema: di
     if image_path:
         messages[0]["images"] = [image_path]
 
-    kwargs = {"model": model, "messages": messages}
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "options": {
+            "num_ctx": 8192,
+            "temperature": 0,
+        },
+    }
     if json_schema:
         kwargs["format"] = json_schema
 

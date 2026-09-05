@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+    <title>Sovereign AI Workbench</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="app-shell">
+
+        <!-- Top application header -->
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-icon">🛡</div>
+
+                <div>
+                    <h1>Sovereign AI Workbench</h1>
+                    <p>On-Premise Agentic AI for Confidential Industrial Work</p>
+                </div>
+            </div>
+
+            <div class="airgap-badge">
+                <span class="status-dot"></span>
+                LOCAL-ONLY / AIR-GAPPED READY
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+
+            <!-- Left: Task selection -->
+            <aside class="sidebar task-sidebar">
+                <div class="panel-heading">
+                    <p class="eyebrow">WORKFLOWS</p>
+                    <h2>Task Templates</h2>
+                </div>
+
+                <button
+                    class="task-card active"
+                    data-task="approval_note"
+                    type="button"
+                >
+                    <span class="task-icon">📄</span>
+
+                    <span class="task-copy">
+                        <strong>Approval Note</strong>
+                        <small>Scan → SOP check → DOCX</small>
+                    </span>
+                </button>
+
+                <button
+                    class="task-card"
+                    data-task="code_task"
+                    type="button"
+                >
+                    <span class="task-icon">⌘</span>
+
+                    <span class="task-copy">
+                        <strong>Code Sandbox</strong>
+                        <small>Generate → Execute → Verify</small>
+                    </span>
+                </button>
+
+                <button
+                    class="task-card"
+                    data-task="vision_task"
+                    type="button"
+                >
+                    <span class="task-icon">◉</span>
+
+                    <span class="task-copy">
+                        <strong>Vision Analysis</strong>
+                        <small>Image → Structured findings</small>
+                    </span>
+                </button>
+
+                <div class="sidebar-note">
+                    <span>🔒</span>
+                    <p>
+                        Files and model prompts remain on this workstation.
+                    </p>
+                </div>
+            </aside>
+
+            <!-- Center: Task workspace -->
+            <section class="workspace panel">
+                <div class="workspace-heading">
+                    <div>
+                        <p class="eyebrow" id="task-eyebrow">
+                            MULTI-AGENT WORKFLOW
+                        </p>
+
+                        <h2 id="task-title">
+                            Draft Approval Note from Scanned Report
+                        </h2>
+
+                        <p id="task-description">
+                            Upload an inspection report. Vision and Document
+                            agents will extract findings, consult local SOPs,
+                            and generate a formal Word approval note.
+                        </p>
+                    </div>
+
+                    <div class="model-route" id="model-route">
+                        <span>ROUTE</span>
+                        <strong>Vision → RAG → Document</strong>
+                    </div>
+                </div>
+
+                <div class="upload-section" id="upload-section">
+                    <label class="upload-box" for="file-input">
+                        <input
+                            id="file-input"
+                            type="file"
+                            accept=".jpg,.jpeg,.png"
+                        >
+
+                        <span class="upload-icon">⇧</span>
+                        <strong>Upload Inspection Image</strong>
+                        <small>
+                            JPG or PNG · Stored only in local workspace
+                        </small>
+                    </label>
+
+                    <div class="file-preview hidden" id="file-preview">
+                        <img
+                            id="preview-image"
+                            src=""
+                            alt="Selected inspection report preview"
+                        >
+
+                        <div class="preview-meta">
+                            <strong id="selected-file-name">
+                                No file selected
+                            </strong>
+
+                            <span id="selected-file-size"></span>
+
+                            <button
+                                id="remove-file-button"
+                                class="text-button"
+                                type="button"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="instruction-section">
+                    <label for="instructions">Task Instructions</label>
+
+                    <textarea
+                        id="instructions"
+                        rows="6"
+                    >Prepare an approval note for this industrial inspection report. Identify non-conformities and check whether escalation is required according to the local SOP.</textarea>
+                </div>
+
+                <div class="action-row">
+                    <div class="local-note">
+                        <span>🛡</span>
+                        <span>
+                            Execution uses local models and a network-disabled sandbox.
+                        </span>
+                    </div>
+
+                    <button
+                        id="run-task-button"
+                        class="primary-button"
+                        type="button"
+                    >
+                        <span>Run Local Agent Workflow</span>
+                        <span class="button-arrow">→</span>
+                    </button>
+                </div>
+
+                <!-- Hidden until a workflow starts -->
+                <section class="execution-section hidden" id="execution-section">
+                    <div class="section-title-row">
+                        <div>
+                            <p class="eyebrow">LIVE EXECUTION</p>
+                            <h3>Agent Workflow Trace</h3>
+                        </div>
+
+                        <span class="running-badge" id="workflow-status">
+                            READY
+                        </span>
+                    </div>
+
+                    <div class="workflow-timeline" id="workflow-timeline">
+                        <!-- app.js renders workflow steps here -->
+                    </div>
+                </section>
+
+                <!-- Hidden until backend returns output -->
+                <section class="results-section hidden" id="results-section">
+                    <div class="section-title-row">
+                        <div>
+                            <p class="eyebrow">OUTPUT</p>
+                            <h3>Task Result</h3>
+                        </div>
+
+                        <span class="success-badge" id="result-status">
+                            COMPLETED
+                        </span>
+                    </div>
+
+                    <div class="result-summary" id="result-summary">
+                        <!-- app.js renders models and tools here -->
+                    </div>
+
+                    <div class="deliverables-container" id="deliverables-container">
+                        <!-- app.js renders downloadable output files here -->
+                    </div>
+
+                    <details class="json-details">
+                        <summary>View complete agent response</summary>
+                        <pre id="raw-result-json"></pre>
+                    </details>
+                </section>
+            </section>
+
+            <!-- Right: Sovereignty audit panel -->
+            <aside class="sidebar monitor-sidebar">
+                <div class="panel-heading">
+                    <p class="eyebrow">SECURITY & AUDIT</p>
+                    <h2>Sovereignty Monitor</h2>
+                </div>
+
+                <div class="security-status">
+                    <div class="security-row">
+                        <span class="security-icon success">●</span>
+
+                        <div>
+                            <strong>Local FastAPI</strong>
+                            <small id="fastapi-status">
+                                Checking localhost...
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="security-row">
+                        <span class="security-icon success">●</span>
+
+                        <div>
+                            <strong>Local Ollama</strong>
+                            <small id="ollama-status">
+                                127.0.0.1:11434
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="security-row">
+                        <span class="security-icon success">●</span>
+
+                        <div>
+                            <strong>Sandbox Network</strong>
+                            <small id="sandbox-status">
+                                Docker --network none
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="security-row">
+                        <span class="security-icon success">●</span>
+
+                        <div>
+                            <strong>External Connections</strong>
+                            <small id="external-status">
+                                Checking...
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="audit-card">
+                    <div class="audit-card-heading">
+                        <span>Latest Audit</span>
+                        <button
+                            id="refresh-monitor-button"
+                            class="icon-button"
+                            type="button"
+                            title="Refresh monitor"
+                        >
+                            ↻
+                        </button>
+                    </div>
+
+                    <div id="latest-audit-content">
+                        <p class="muted-text">
+                            Loading local audit records...
+                        </p>
+                    </div>
+                </div>
+
+                <div class="monitor-footer">
+                    <span>LOCAL ENDPOINTS ONLY</span>
+                    <strong>127.0.0.1</strong>
+                </div>
+            </aside>
+
+        </main>
+
+        <footer class="app-footer">
+            <span>SIH 2026 · Sovereign On-Premise Agentic AI Workbench</span>
+            <span>Open-weight models · Local RAG · Auditable tools</span>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
