@@ -1,0 +1,5 @@
+SOP-101: Boiler Pressure Inspection
+Clause 4.2: The operating pressure of industrial boilers must not exceed 12 bar during routine operation.
+Clause 4.3: Any reading above 12 bar for more than 5 minutes must be logged as a non-conformity and escalated
+to the shift engineer within 1 hour. Clause 4.4: Inspection frequency for pressure vessels is every 90 days,
+recorded in the maintenance log with inspector name, date, and instrument serial number.
